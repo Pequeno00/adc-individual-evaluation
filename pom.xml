@@ -79,6 +79,11 @@
 			<version>3.1.10</version>
 		</dependency>
 		
+		<dependency>
+			<groupId>org.glassfish.jaxb</groupId>
+			<artifactId>jaxb-runtime</artifactId>
+			<version>4.0.5</version>
+		</dependency>
 		
 		<dependency>
 		    <groupId>jakarta.platform</groupId>
