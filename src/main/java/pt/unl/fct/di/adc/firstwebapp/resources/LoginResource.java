@@ -14,6 +14,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
@@ -42,6 +43,8 @@ import com.google.gson.Gson;
 public class LoginResource {
 
 	private static final String MESSAGE_INVALID_CREDENTIALS = "Incorrect username or password.";
+	private static final String MESSAGE_NEXT_PARAMETER_INVALID = "Request parameter 'next' must be greater or equal to 0.";
+
 
 	private static final String LOG_MESSAGE_LOGIN_ATTEMP = "Login attempt by user: ";
 	private static final String LOG_MESSAGE_LOGIN_SUCCESSFUL = "Login successful by user: ";
@@ -260,6 +263,61 @@ public class LoginResource {
 					)
 					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME))
 					.setLimit(3)
+					.build();
+			QueryResults<Entity> logs = datastore.run(query);
+			
+			List<Date> loginDates = new ArrayList<Date>();
+			logs.forEachRemaining(userlog -> {
+				loginDates.add(userlog.getTimestamp(USER_LOGIN_TIME).toDate());
+			});
+			
+			return Response.ok(g.toJson(loginDates)).build();
+		}
+		return Response.status(Status.FORBIDDEN).
+				entity(MESSAGE_INVALID_CREDENTIALS)
+				.build();
+	}
+
+	@POST
+	@Path("/user/login-logs/pagination")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response getLatestLogins(@QueryParam("next") String nextParam, LoginData data) {
+
+		int next;
+		
+		// Checking for valid request parameter values
+		try {
+			next = Integer.parseInt(nextParam);
+			if(next < 0)
+				return Response.status(Status.BAD_REQUEST).entity(MESSAGE_NEXT_PARAMETER_INVALID).build();
+		}
+		catch (NumberFormatException e) {
+			return Response.status(Status.BAD_REQUEST).entity(MESSAGE_NEXT_PARAMETER_INVALID).build();
+		}
+		
+		Key userKey = userKeyFactory.newKey(data.username);
+		
+		Entity user = datastore.get(userKey);
+		if( user != null && user.getString(USER_PWD).equals(DigestUtils.sha512Hex(data.password))) {
+			
+			// Get the date of yesterday
+			Calendar cal = Calendar.getInstance();
+			cal.add(Calendar.DATE, -1);
+			Timestamp yesterday = Timestamp.of(cal.getTime());
+			
+			Query<Entity> query = Query.newEntityQueryBuilder()
+					.setKind("UserLog")
+					.setFilter(
+							CompositeFilter.and(
+									PropertyFilter.hasAncestor(
+											datastore.newKeyFactory().setKind("User").newKey(data.username)),
+									PropertyFilter.ge(USER_LOGIN_TIME, yesterday)
+							)
+					)
+					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME))
+					.setLimit(3)
+					.setOffset(next)
 					.build();
 			QueryResults<Entity> logs = datastore.run(query);
 			
