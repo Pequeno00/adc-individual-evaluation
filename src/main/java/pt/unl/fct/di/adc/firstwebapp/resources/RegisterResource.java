@@ -12,11 +12,11 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
 
 import com.google.gson.Gson;
-
 import com.google.cloud.Timestamp;
 import com.google.cloud.datastore.Key;
 import com.google.cloud.datastore.Entity;
 import com.google.cloud.datastore.Datastore;
+import com.google.cloud.datastore.Transaction;
 import com.google.cloud.datastore.DatastoreOptions;
 
 import pt.unl.fct.di.adc.firstwebapp.util.LoginData;
@@ -81,4 +81,43 @@ public class RegisterResource {
 		
 		return Response.ok().build();
 	}
+
+    @POST
+    @Path("/v3")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response registerUserV3(RegisterData data) {
+        LOG.fine("Attempt to register user: " + data.username);
+
+        if(!data.validRegistration())
+            return Response.status(Status.BAD_REQUEST).entity("Missing or wrong parameter.").build();
+
+        try {
+            Transaction txn = datastore.newTransaction();
+            Key userKey = datastore.newKeyFactory().setKind("User").newKey(data.username);
+            Entity user = txn.get(userKey);
+
+            if(user != null) {
+                txn.rollback();
+                return Response.status(Status.CONFLICT).entity("User already exists.").build();
+            }            
+            else {
+                user = Entity.newBuilder(userKey)
+                        .set("user_name", data.name)
+                        .set("user_pwd", DigestUtils.sha512Hex(data.password))
+                        .set("user_email", data.email)
+                        .set("user_creation_time", Timestamp.now())
+                        .build();
+                txn.put(user);
+                txn.commit();
+                LOG.info("User registered " + data.username);
+                return Response.ok().build();
+            }
+        } catch (Exception e) {
+            LOG.severe("Error registering user: " + e.getMessage());
+            return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error registering user.").build();
+        }
+        finally {
+            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+        }
+    }
 }
