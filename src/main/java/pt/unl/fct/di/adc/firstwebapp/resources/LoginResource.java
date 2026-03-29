@@ -1,446 +1,215 @@
 package pt.unl.fct.di.adc.firstwebapp.resources;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Calendar;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Logger;
+import java.util.Map;
+import java.util.HashMap;
 
 import org.apache.commons.codec.digest.DigestUtils;
 
-import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.HttpHeaders;
-import jakarta.ws.rs.core.Response.Status;
-
 import jakarta.servlet.http.HttpServletRequest;
 
-import pt.unl.fct.di.adc.firstwebapp.util.AuthToken;
-import pt.unl.fct.di.adc.firstwebapp.util.LoginData;
-
 import com.google.cloud.Timestamp;
-import com.google.cloud.datastore.Key;
-import com.google.cloud.datastore.Query;
-import com.google.cloud.datastore.Entity;
-import com.google.cloud.datastore.Datastore;
-import com.google.cloud.datastore.KeyFactory;
-import com.google.cloud.datastore.PathElement;
-import com.google.cloud.datastore.StringValue;
-import com.google.cloud.datastore.Transaction;
-import com.google.cloud.datastore.QueryResults;
-import com.google.cloud.datastore.DatastoreOptions;
-import com.google.cloud.datastore.StructuredQuery.OrderBy;
-import com.google.cloud.datastore.StructuredQuery.PropertyFilter;
-import com.google.cloud.datastore.StructuredQuery.CompositeFilter;
-
+import com.google.cloud.datastore.*;
 import com.google.gson.Gson;
 
+import pt.unl.fct.di.adc.firstwebapp.util.*;
 
 @Path("/login")
 @Produces(MediaType.APPLICATION_JSON + ";charset=utf-8")
 public class LoginResource {
 
-	private static final String MESSAGE_INVALID_CREDENTIALS = "Incorrect username or password.";
-	private static final String MESSAGE_NEXT_PARAMETER_INVALID = "Request parameter 'next' must be greater or equal to 0.";
+    private static final Logger LOG = Logger.getLogger(LoginResource.class.getName());
+    private static final String ERR_CODE_INVALID_TOKEN = "9903";
+    private static final String ERR_MSG_INVALID_TOKEN = "The operation is called with an invalid token";
+    private static final String ERR_CODE_TOKEN_EXPIRED = "9904";
+    private static final String ERR_MSG_TOKEN_EXPIRED = "The operation is called with a token that is expired";
+    private static final String ERR_CODE_UNAUTHORIZED = "9905";
+    private static final String ERR_MSG_UNAUTHORIZED = "The operation is not allowed for the user role";
+    private static final String ROLE_ADMIN = "ADMIN";
+    private static final String ROLE_BOFFICER = "BOFFICER";
+    private static final String ROLE_USER = "USER";
+    private final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
+    private final Gson g = new Gson();
+
+    // Códigos e Mensagens de Erro conforme o Enunciado [cite: 104]
+    private static final String ERR_CODE_INVALID_CREDENTIALS = "9900";
+    private static final String ERR_MSG_INVALID_CREDENTIALS = "The username-password pair is not valid";
+
+    // Constantes de Sucesso e Base de Dados
+    private static final String STATUS_SUCCESS = "success";
+    private static final String KIND_USER = "User";
+    private static final String KIND_TOKEN = "Token";
+    private static final String KIND_USER_LOG = "UserLog";
+
+    @POST
+    @Path("/")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response doLogin(LoginRequest wrapper, @Context HttpServletRequest request, @Context HttpHeaders headers) {
+        LoginData data = wrapper.input;
+        LOG.info("Tentativa de login para o utilizador: " + data.username);
+
+        Transaction txn = datastore.newTransaction();
+        try {
+            Key userKey = datastore.newKeyFactory().setKind(KIND_USER).newKey(data.username);
+            Entity user = txn.get(userKey);
+
+            if (user == null || !user.getString("user_pwd").equals(DigestUtils.sha512Hex(data.password))) {
+                LOG.warning("Falha na autenticação para: " + data.username);
+                return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_INVALID_CREDENTIALS, ERR_MSG_INVALID_CREDENTIALS))).build();
+            }
+
+            String role = user.contains("role") ? user.getString("role") : "USER";
+            AuthToken token = new AuthToken(data.username, role);
+
+            Key tokenKey = datastore.newKeyFactory().setKind(KIND_TOKEN).newKey(token.tokenId);
+            Entity tokenEntity = Entity.newBuilder(tokenKey)
+                    .set("username", token.username)
+                    .set("role", token.role)
+                    .set("issuedAt", token.issuedAt)
+                    .set("expiresAt", token.expiresAt)
+                    .build();
+
+            Key logKey = datastore.allocateId(datastore.newKeyFactory()
+                    .addAncestor(PathElement.of(KIND_USER, data.username)).setKind(KIND_USER_LOG).newKey());
+
+            Entity loginLog = Entity.newBuilder(logKey)
+                    .set("user_login_time", Timestamp.now())
+                    .set("user_login_ip", request.getRemoteAddr())
+                    .build();
+
+            // Guardar tudo atomicamente
+            txn.put(tokenEntity, loginLog);
+            txn.commit();
+
+            Map<String, Object> dataMap = new HashMap<>();
+            dataMap.put("token", token);
+
+            LOG.info("Login bem-sucedido: " + data.username);
+            return Response.ok(g.toJson(new SuccessResponse(dataMap))).build();
+
+        } catch (Exception e) {
+            if (txn.isActive()) txn.rollback();
+            LOG.severe("Erro interno no processo de login: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
+        } finally {
+            if (txn.isActive()) txn.rollback();
+        }
+    }
+
+    @POST
+    @Path("/logout")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response doLogout(AuthenticatedRequest request) {
+        Entity tokenDB = getValidatedToken(request.token);
+
+        if (tokenDB == null) {
+            return Response.ok(g.toJson(new ErrorResponse("9903", "INVALID_TOKEN"))).build();
+        }
 
 
-	private static final String LOG_MESSAGE_LOGIN_ATTEMP = "Login attempt by user: ";
-	private static final String LOG_MESSAGE_LOGIN_SUCCESSFUL = "Login successful by user: ";
-	private static final String LOG_MESSAGE_WRONG_PASSWORD = "Wrong password for: ";
-	private static final String LOG_MESSAGE_UNKNOW_USER = "Failed login attempt for username: ";
-	
-	private static final String USER_PWD = "user_pwd";
-	private static final String USER_LOGIN_TIME = "user_login_time";
+        String requesterUsername = tokenDB.getString("username");
+        String requesterRole = tokenDB.getString("role");
+        String targetUsername = (String) request.input.get("username");
 
-	/** 
-	 * Logger Object
-	 */
-	private static final Logger LOG = Logger.getLogger(LoginResource.class.getName());
-	private static final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
-	private static final KeyFactory userKeyFactory = datastore.newKeyFactory().setKind("User");
+        if (targetUsername == null) {
+            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+        }
 
-	private final Gson g = new Gson();
-	
-	public LoginResource() {} // Nothing to be done here
-	
-	@POST
-	@Path("/")
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response doLogin(LoginData data) {
-		LOG.fine("Attempt to login user: " + data.username);
+        if (!requesterRole.equals("ADMIN") && !requesterUsername.equals(targetUsername)) {
+            return Response.ok(g.toJson(new ErrorResponse("9905", "UNAUTHORIZED"))).build();
+        }
 
-		if(data.username.equals("user") && data.password.equals("password")) {
-			AuthToken at = new AuthToken(data.username);
-			return Response.ok(g.toJson(at)).build();
-		}
+        Transaction txn = datastore.newTransaction();
+        try {
+            if (requesterUsername.equals(targetUsername)) {
+                txn.delete(tokenDB.getKey());
+            } else {
+                Query<Entity> query = Query.newEntityQueryBuilder()
+                        .setKind("Token")
+                        .setFilter(com.google.cloud.datastore.StructuredQuery.PropertyFilter.eq("username", targetUsername))
+                        .build();
+                QueryResults<Entity> results = datastore.run(query);
+                results.forEachRemaining(t -> txn.delete(t.getKey()));
+            }
 
-		return Response.status(Response.Status.FORBIDDEN)
-				.entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
-		
-	}
-	
-	@GET
-	@Path("/{username}")
-	public Response checkUsernameAvailable(@PathParam("username") String username) {
-		if(username.trim().equals("user")) {
-			return Response.ok().entity(g.toJson(false)).build();
-		} else {
-			return Response.ok().entity(g.toJson(true)).build();
-		}
-	}
+            txn.commit();
+            LOG.info("Logout realizado com sucesso para: " + targetUsername);
+            return Response.ok(g.toJson(new SuccessResponse(Map.of("message", "Logout successful")))).build();
 
-	@POST
-	@Path("/v1")
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response doLoginV1(LoginData data) {
-		LOG.fine("Attempt to login user: " + data.username);
+        } catch (Exception e) {
+            if (txn.isActive()) txn.rollback();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
+        } finally {
+            if (txn.isActive()) txn.rollback();
+        }
+    }
 
-		Key userKey = userKeyFactory.newKey(data.username);
-		Entity user = datastore.get(userKey);
+    @POST
+    @Path("/showauthsessions")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response showAuthenticatedSessions(AuthenticatedRequest request){
+        Entity token = getValidatedToken(request.token);
 
-		if(user != null) {
-			String hashedPWD = user.getString(USER_PWD);
-			if(hashedPWD.equals(DigestUtils.sha512Hex(data.password))) {
-				LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
-				AuthToken at = new AuthToken(data.username);
-				return Response.ok(g.toJson(at)).build();
-			}
-			else {
-				LOG.warning("User '" + data.username + "' provided wrong password.");
-				return Response.status(Response.Status.FORBIDDEN)
-					.entity(MESSAGE_INVALID_CREDENTIALS)
-					.build();
-			}
-		}
-		else {
-			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
-			return Response.status(Response.Status.FORBIDDEN)
-				.entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
-		}
-	}
+        if (token == null) {
+            return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_INVALID_TOKEN, ERR_MSG_INVALID_TOKEN))).build();
+        }
 
-	@POST
-	@Path("/v1a")
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response doLoginV1a(LoginData data) {
-		LOG.fine(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
+        if (!token.getString("role").equals(ROLE_ADMIN)) {
+            return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_UNAUTHORIZED, ERR_MSG_UNAUTHORIZED))).build();
+        }
 
-		Key userKey = datastore.newKeyFactory().setKind("User").newKey(data.username);
-		Entity user = datastore.get(userKey);
+        Query<Entity> query = Query.newEntityQueryBuilder()
+                .setKind("Token")
+                .build();
+        QueryResults<Entity> results = datastore.run(query);
 
-		if(user != null) {
-			String hashedPWD = user.getString(USER_PWD);
-			if(hashedPWD.equals(DigestUtils.sha512Hex(data.password))) {
-				LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
-				user = Entity.newBuilder(user)
-						.set(USER_LOGIN_TIME, Timestamp.now())
-						.build();
-				datastore.update(user);
-				AuthToken at = new AuthToken(data.username);
-				return Response.ok(g.toJson(at)).build();
-			}
-			else {
-				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
-				return Response.status(Response.Status.FORBIDDEN)
-				.entity(MESSAGE_INVALID_CREDENTIALS).build();
-			}
-		}
-		else {
-			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
-			return Response.status(Response.Status.FORBIDDEN)
-				.entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
-		}
-	}
+        List<Map<String, Object>> sessionsList = new ArrayList<>();
+        results.forEachRemaining(tokenEntity -> {
+            Map<String, Object> sessionData = new HashMap<>();
+            sessionData.put("tokenId", tokenEntity.getKey().getName());
+            sessionData.put("username", tokenEntity.getString("username"));
+            sessionData.put("role", tokenEntity.getString("role"));
+            sessionData.put("expiresAt", tokenEntity.getLong("expiresAt"));
+            sessionsList.add(sessionData);
+        });
 
-	@POST
-	@Path("/v1b")
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response doLoginV1b(LoginData data) {
-		LOG.fine(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
+        Map<String, List<Map<String, Object>>> dataMap = new HashMap<>();
+        dataMap.put("sessions", sessionsList);
 
-		Key userKey = userKeyFactory.newKey(data.username);
-		Entity user = datastore.get(userKey);
-		
-		if( user != null ) {
-			String hashedPWD = user.getString(USER_PWD);
-			if( hashedPWD.equals(DigestUtils.sha512Hex(data.password))) {
-				KeyFactory logKeyFactory = datastore.newKeyFactory()
-						.addAncestor(PathElement.of("User", data.username))
-						.setKind("UserLog");
-				Key logKey = datastore.allocateId(logKeyFactory.newKey());
-				Entity userLog = Entity.newBuilder(logKey)
-						.set(USER_LOGIN_TIME, Timestamp.now())
-						.build();
-				datastore.put(userLog);
-				LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
-				AuthToken token = new AuthToken(data.username);
-				return Response.ok(g.toJson(token)).build();
-			}
-			else {
-				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
-				return Response.status(Status.FORBIDDEN)
-						.entity(MESSAGE_INVALID_CREDENTIALS)
-						.build();
-			}
-		}
-		else {
-			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
-			return Response.status(Status.FORBIDDEN)
-					.entity(MESSAGE_INVALID_CREDENTIALS)
-					.build();
-		}
-	}
+        return Response.ok(g.toJson(new SuccessResponse(dataMap))).build();
+    }
 
-	@POST
-	@Path("/v2")
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response doLoginV2(LoginData data,
-			@Context HttpServletRequest request,
-			@Context HttpHeaders headers) {
-		LOG.fine(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
+    private Entity getValidatedToken(AuthToken tokenFromRequest) {
+        if (tokenFromRequest == null || tokenFromRequest.tokenId == null) {
+            return null;
+        }
 
-		Key userKey = userKeyFactory.newKey(data.username);
-		Key ctrsKey = datastore.newKeyFactory()
-				.addAncestors(PathElement.of("User", data.username))
-				.setKind("UserStats")
-				.newKey("counters");
-		// Generate automatically a key
-		Key logKey = datastore.allocateId(
-				datastore.newKeyFactory()
-						.addAncestors(PathElement.of("User", data.username))
-						.setKind("UserLog").newKey());
+        Key tokenKey = datastore.newKeyFactory().setKind("Token").newKey(tokenFromRequest.tokenId);
+        Entity tokenEntity = datastore.get(tokenKey);
 
-		Transaction txn = datastore.newTransaction();
-		try {
-			Entity user = txn.get(userKey);
-			if (user == null) {
-				// Username does not exist
-				LOG.warning(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
-				return Response.status(Status.FORBIDDEN)
-						.entity(MESSAGE_INVALID_CREDENTIALS)
-						.build();
-			}
+        // Valida existência e se o username no JSON condiz com o dono do token na DB
+        if (tokenEntity == null || !tokenEntity.getString("username").equals(tokenFromRequest.username)) {
+            return null;
+        }
 
-			// We get the user stats from the storage
-			Entity stats = txn.get(ctrsKey);
-			if (stats == null) {
-				stats = Entity.newBuilder(ctrsKey)
-						.set("user_stats_logins", 0L)
-						.set("user_stats_failed", 0L)
-						.set("user_first_login", Timestamp.now())
-						.set("user_last_login", Timestamp.now())
-						.build();
-			}
+        // Valida expiração (usa "expiresAt" com e minúsculo para consistência) [cite: 85-88]
+        long now = System.currentTimeMillis();
+        if (now > tokenEntity.getLong("expiresAt")) {
+            return null;
+        }
 
-			String hashedPWD = (String) user.getString(USER_PWD);
-			if (hashedPWD.equals(DigestUtils.sha512Hex(data.password))) {
-				// Login successful
-				// Construct the logs
-				String cityLatLong = headers.getHeaderString("X-AppEngine-CityLatLong");
-				Entity log = Entity.newBuilder(logKey)
-						.set("user_login_ip", request.getRemoteAddr())
-						.set("user_login_host", request.getRemoteHost())
-						.set("user_login_latlon", cityLatLong != null
-								? StringValue.newBuilder(cityLatLong).setExcludeFromIndexes(true).build()
-								: StringValue.newBuilder("").setExcludeFromIndexes(true).build())
-						.set("user_login_city", headers.getHeaderString("X-AppEngine-City"))
-						.set("user_login_country", headers.getHeaderString("X-AppEngine-Country"))
-						.set("user_login_time", Timestamp.now())
-						.build();
-
-				// Get the user statistics and updates it
-				// Copying information every time a user logins may not be a good solution
-				// (why?)
-				Entity ustats = Entity.newBuilder(ctrsKey)
-						.set("user_stats_logins", stats.getLong("user_stats_logins") + 1)
-						.set("user_stats_failed", 0L)
-						.set("user_first_login", stats.getTimestamp("user_first_login"))
-						.set("user_last_login", Timestamp.now())
-						.build();
-
-				// Batch operation
-				txn.put(log, ustats);
-				txn.commit();
-
-				// Return token
-				AuthToken token = new AuthToken(data.username);
-				LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
-				return Response.ok(g.toJson(token)).build();
-			} else {
-				// Incorrect password
-				// Copying here is even worse. Propose a better solution!
-				Entity ustats = Entity.newBuilder(ctrsKey)
-						.set("user_stats_logins", stats.getLong("user_stats_logins"))
-						.set("user_stats_failed", stats.getLong("user_stats_failed") + 1L)
-						.set("user_first_login", stats.getTimestamp("user_first_login"))
-						.set("user_last_login", stats.getTimestamp("user_last_login"))
-						.set("user_last_attempt", Timestamp.now())
-						.build();
-
-				txn.put(ustats);
-				txn.commit();
-				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
-				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
-			}
-		} catch (Exception e) {
-			txn.rollback();
-			LOG.severe(e.getMessage());
-			return Response.status(Status.INTERNAL_SERVER_ERROR).build();
-		} finally {
-			if (txn.isActive()) {
-				txn.rollback();
-			}
-		}
-	}
-
-
-	@POST
-	@Path("/user/login-logs/v1")
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response getUserLoginLogsV1(LoginData data) {
-		Key userKey = userKeyFactory.newKey(data.username);
-		
-		Entity user = datastore.get(userKey);
-		if( user != null && user.getString(USER_PWD).equals(DigestUtils.sha512Hex(data.password))) {
-			
-			// Get the date of yesterday
-			Calendar cal = Calendar.getInstance();
-			cal.add(Calendar.DATE, -1);
-			Timestamp yesterday = Timestamp.of(cal.getTime());
-			
-			Query<Entity> query = Query.newEntityQueryBuilder()
-					.setKind("UserLog")
-					.setFilter(
-							CompositeFilter.and(
-									PropertyFilter.hasAncestor(
-											datastore.newKeyFactory().setKind("User").newKey(data.username)),
-									PropertyFilter.ge(USER_LOGIN_TIME, yesterday)
-							)
-					)
-					.build();
-			QueryResults<Entity> logs = datastore.run(query);
-			
-			List<Date> loginDates = new ArrayList<Date>();
-			logs.forEachRemaining(userlog -> {
-				loginDates.add(userlog.getTimestamp(USER_LOGIN_TIME).toDate());
-			});
-			
-			return Response.ok(g.toJson(loginDates)).build();
-		}
-		return Response.status(Status.FORBIDDEN).
-				entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
-	}
-
-	@POST
-	@Path("/user/login-logs/v2")
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response getLatestLogins(LoginData data) {
-		
-		Key userKey = userKeyFactory.newKey(data.username);
-		
-		Entity user = datastore.get(userKey);
-		if( user != null && user.getString(USER_PWD).equals(DigestUtils.sha512Hex(data.password))) {
-			
-			// Get the date of yesterday
-			Calendar cal = Calendar.getInstance();
-			cal.add(Calendar.DATE, -1);
-			Timestamp yesterday = Timestamp.of(cal.getTime());
-			
-			Query<Entity> query = Query.newEntityQueryBuilder()
-					.setKind("UserLog")
-					.setFilter(
-							CompositeFilter.and(
-									PropertyFilter.hasAncestor(
-											datastore.newKeyFactory().setKind("User").newKey(data.username)),
-									PropertyFilter.ge(USER_LOGIN_TIME, yesterday)
-							)
-					)
-					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME))
-					.setLimit(3)
-					.build();
-			QueryResults<Entity> logs = datastore.run(query);
-			
-			List<Date> loginDates = new ArrayList<Date>();
-			logs.forEachRemaining(userlog -> {
-				loginDates.add(userlog.getTimestamp(USER_LOGIN_TIME).toDate());
-			});
-			
-			return Response.ok(g.toJson(loginDates)).build();
-		}
-		return Response.status(Status.FORBIDDEN).
-				entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
-	}
-
-	@POST
-	@Path("/user/login-logs/pagination")
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response getLatestLogins(@QueryParam("next") String nextParam, LoginData data) {
-
-		int next;
-		
-		// Checking for valid request parameter values
-		try {
-			next = Integer.parseInt(nextParam);
-			if(next < 0)
-				return Response.status(Status.BAD_REQUEST).entity(MESSAGE_NEXT_PARAMETER_INVALID).build();
-		}
-		catch (NumberFormatException e) {
-			return Response.status(Status.BAD_REQUEST).entity(MESSAGE_NEXT_PARAMETER_INVALID).build();
-		}
-		
-		Key userKey = userKeyFactory.newKey(data.username);
-		
-		Entity user = datastore.get(userKey);
-		if( user != null && user.getString(USER_PWD).equals(DigestUtils.sha512Hex(data.password))) {
-			
-			// Get the date of yesterday
-			Calendar cal = Calendar.getInstance();
-			cal.add(Calendar.DATE, -1);
-			Timestamp yesterday = Timestamp.of(cal.getTime());
-			
-			Query<Entity> query = Query.newEntityQueryBuilder()
-					.setKind("UserLog")
-					.setFilter(
-							CompositeFilter.and(
-									PropertyFilter.hasAncestor(
-											datastore.newKeyFactory().setKind("User").newKey(data.username)),
-									PropertyFilter.ge(USER_LOGIN_TIME, yesterday)
-							)
-					)
-					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME))
-					.setLimit(3)
-					.setOffset(next)
-					.build();
-			QueryResults<Entity> logs = datastore.run(query);
-			
-			List<Date> loginDates = new ArrayList<Date>();
-			logs.forEachRemaining(userlog -> {
-				loginDates.add(userlog.getTimestamp(USER_LOGIN_TIME).toDate());
-			});
-			
-			return Response.ok(g.toJson(loginDates)).build();
-		}
-		return Response.status(Status.FORBIDDEN).
-				entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
-	}
-
+        return tokenEntity;
+    }
 }

@@ -7,18 +7,24 @@ public class RegisterData {
 	public String confirmation;
 	public String email;
 	public String name;
+    public String role;
+    public String phone;
+    public String address;
 	
 	
 	public RegisterData() {
 		
 	}
 	
-	public RegisterData(String username, String password, String confirmation, String email, String name) {
+	public RegisterData(String username, String password, String confirmation, String email, String name, String role, String phone, String address) {
 		this.username = username;
 		this.password = password;
 		this.confirmation = confirmation;
 		this.email = email;
 		this.name = name;
+        this.role = role;
+        this.phone = phone;
+        this.address = address;
 	}
 	
 	private boolean nonEmptyOrBlankField(String field) {
@@ -32,7 +38,17 @@ public class RegisterData {
 			   nonEmptyOrBlankField(password) &&
 			   nonEmptyOrBlankField(email) &&
 			   nonEmptyOrBlankField(name) &&
+                nonEmptyOrBlankField(role) &&
+                nonEmptyOrBlankField(phone) &&
+                nonEmptyOrBlankField(address) &&
+
 			   email.contains("@") &&
-			   password.equals(confirmation);
+                username.contains("@") &&
+			   password.equals(confirmation) &&
+                isValidRole(role);
 	}
+
+    public boolean isValidRole(String role){
+        return role.equals("ADMIN") || role.equals("USER") || role.equals("BOFFICER");
+    }
 }
