@@ -24,7 +24,7 @@ import com.google.cloud.datastore.DatastoreOptions;
 
 import pt.unl.fct.di.adc.firstwebapp.util.*;
 
-@Path("/register")
+@Path("/")
 public class RegisterResource {
 
 	private static final Logger LOG = Logger.getLogger(RegisterResource.class.getName());
@@ -36,7 +36,7 @@ public class RegisterResource {
 	public RegisterResource() {}	// Default constructor, nothing to do
 
     @POST
-    @Path("/")
+    @Path("/createaccount")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createAccount(RegisterRequest wrapper) {

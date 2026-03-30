@@ -19,6 +19,8 @@ import jakarta.ws.rs.core.Response;
 import com.google.gson.Gson;
 import pt.unl.fct.di.adc.firstwebapp.util.*;
 
+@Path("/")
+@Produces(MediaType.APPLICATION_JSON + ";charset=utf-8")
 public class UserResource {
     private static final Logger LOG = Logger.getLogger(UserResource.class.getName());
     private static final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
@@ -133,7 +135,7 @@ public class UserResource {
     }
 
     @POST
-    @Path("/modifyaccountattributes")
+    @Path("/modaccount")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response modifyAccountAttributes(AuthenticatedRequest request){

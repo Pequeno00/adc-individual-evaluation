@@ -24,7 +24,7 @@ import com.google.gson.Gson;
 
 import pt.unl.fct.di.adc.firstwebapp.util.*;
 
-@Path("/login")
+@Path("/")
 @Produces(MediaType.APPLICATION_JSON + ";charset=utf-8")
 public class LoginResource {
 
@@ -52,7 +52,7 @@ public class LoginResource {
     private static final String KIND_USER_LOG = "UserLog";
 
     @POST
-    @Path("/")
+    @Path("/login")
     @Consumes(MediaType.APPLICATION_JSON)
     public Response doLogin(LoginRequest wrapper, @Context HttpServletRequest request, @Context HttpHeaders headers) {
         LoginData data = wrapper.input;
@@ -132,16 +132,12 @@ public class LoginResource {
 
         Transaction txn = datastore.newTransaction();
         try {
-            if (requesterUsername.equals(targetUsername)) {
-                txn.delete(tokenDB.getKey());
-            } else {
-                Query<Entity> query = Query.newEntityQueryBuilder()
-                        .setKind("Token")
-                        .setFilter(com.google.cloud.datastore.StructuredQuery.PropertyFilter.eq("username", targetUsername))
-                        .build();
-                QueryResults<Entity> results = datastore.run(query);
-                results.forEachRemaining(t -> txn.delete(t.getKey()));
-            }
+            Query<Entity> query = Query.newEntityQueryBuilder()
+                    .setKind("Token")
+                    .setFilter(com.google.cloud.datastore.StructuredQuery.PropertyFilter.eq("username", targetUsername))
+                    .build();
+            QueryResults<Entity> results = datastore.run(query);
+            results.forEachRemaining(t -> txn.delete(t.getKey()));
 
             txn.commit();
             LOG.info("Logout realizado com sucesso para: " + targetUsername);

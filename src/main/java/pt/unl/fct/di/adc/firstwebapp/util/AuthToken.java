@@ -3,6 +3,7 @@ package pt.unl.fct.di.adc.firstwebapp.util;
 import java.util.UUID;
 
 public class AuthToken {
+    public static final long EXPIRATION_TIME = 1000 * 60 * 60 * 24;
 
     public String tokenId;
     public String username;
@@ -17,7 +18,7 @@ public class AuthToken {
         this.username = username;
         this.role = role;
         this.issuedAt = System.currentTimeMillis();
-        this.expiresAt = this.issuedAt + 900000;
+        this.expiresAt = this.issuedAt + EXPIRATION_TIME;
 	}
 	
 }
