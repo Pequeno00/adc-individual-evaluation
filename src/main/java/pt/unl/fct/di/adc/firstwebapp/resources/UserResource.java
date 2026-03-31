@@ -317,7 +317,7 @@ public class UserResource {
         String requesterUsername = tokenDB.getString("username");
         String requesterRole = tokenDB.getString("role");
 
-        if (!requesterUsername.equals(targetUsername) && !requesterRole.equals(ROLE_ADMIN)) {
+        if (!requesterUsername.equals(targetUsername)) {
             return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_UNAUTHORIZED, ERR_MSG_UNAUTHORIZED))).build();
         }
 
