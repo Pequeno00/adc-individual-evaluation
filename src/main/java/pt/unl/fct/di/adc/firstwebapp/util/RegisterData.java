@@ -5,8 +5,6 @@ public class RegisterData {
 	public String username;
 	public String password;
 	public String confirmation;
-	public String email;
-	public String name;
     public String role;
     public String phone;
     public String address;
@@ -20,8 +18,6 @@ public class RegisterData {
 		this.username = username;
 		this.password = password;
 		this.confirmation = confirmation;
-		this.email = email;
-		this.name = name;
         this.role = role;
         this.phone = phone;
         this.address = address;
@@ -36,13 +32,9 @@ public class RegisterData {
 		 	
 		return nonEmptyOrBlankField(username) &&
 			   nonEmptyOrBlankField(password) &&
-			   nonEmptyOrBlankField(email) &&
-			   nonEmptyOrBlankField(name) &&
                 nonEmptyOrBlankField(role) &&
                 nonEmptyOrBlankField(phone) &&
                 nonEmptyOrBlankField(address) &&
-
-			   email.contains("@") &&
                 username.contains("@") &&
 			   password.equals(confirmation) &&
                 isValidRole(role);

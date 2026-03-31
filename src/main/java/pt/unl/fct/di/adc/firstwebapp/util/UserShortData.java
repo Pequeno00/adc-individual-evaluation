@@ -2,10 +2,10 @@ package pt.unl.fct.di.adc.firstwebapp.util;
 
 public class UserShortData {
     public String username;
-    public String password;
+    public String role;
 
-    public  UserShortData(String username, String password) {
+    public  UserShortData(String username, String role) {
         this.username = username;
-        this.password = password;
+        this.role = role;
     }
 }

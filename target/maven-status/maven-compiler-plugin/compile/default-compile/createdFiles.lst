@@ -1,0 +1,14 @@
+pt\unl\fct\di\adc\firstwebapp\resources\LoginResource.class
+pt\unl\fct\di\adc\firstwebapp\resources\RegisterResource.class
+pt\unl\fct\di\adc\firstwebapp\util\LoginRequest.class
+pt\unl\fct\di\adc\firstwebapp\util\RegisterData.class
+pt\unl\fct\di\adc\firstwebapp\util\AuthToken.class
+pt\unl\fct\di\adc\firstwebapp\util\LoginData.class
+pt\unl\fct\di\adc\firstwebapp\util\ShowUsersData.class
+pt\unl\fct\di\adc\firstwebapp\util\UserShortData.class
+pt\unl\fct\di\adc\firstwebapp\util\AuthenticatedRequest.class
+pt\unl\fct\di\adc\firstwebapp\util\RegisterRequest.class
+pt\unl\fct\di\adc\firstwebapp\resources\ComputationResource.class
+pt\unl\fct\di\adc\firstwebapp\util\ErrorResponse.class
+pt\unl\fct\di\adc\firstwebapp\resources\UserResource.class
+pt\unl\fct\di\adc\firstwebapp\util\SuccessResponse.class
