@@ -35,6 +35,7 @@ public class LoginResource {
     private static final String ERR_MSG_TOKEN_EXPIRED = "The operation is called with a token that is expired";
     private static final String ERR_CODE_UNAUTHORIZED = "9905";
     private static final String ERR_MSG_UNAUTHORIZED = "The operation is not allowed for the user role";
+    private static final String INVALID_INPUT = "The call is using input data not following the correct specification";
     private static final String ROLE_ADMIN = "ADMIN";
     private static final String ROLE_BOFFICER = "BOFFICER";
     private static final String ROLE_USER = "USER";
@@ -114,7 +115,7 @@ public class LoginResource {
         Entity tokenDB = getValidatedToken(request.token);
 
         if (tokenDB == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9903", "INVALID_TOKEN"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9903", ERR_MSG_INVALID_TOKEN))).build();
         }
 
 
@@ -123,11 +124,11 @@ public class LoginResource {
         String targetUsername = (String) request.input.get("username");
 
         if (targetUsername == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         if (!requesterRole.equals("ADMIN") && !requesterUsername.equals(targetUsername)) {
-            return Response.ok(g.toJson(new ErrorResponse("9905", "UNAUTHORIZED"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9905", ERR_MSG_UNAUTHORIZED))).build();
         }
 
         Transaction txn = datastore.newTransaction();

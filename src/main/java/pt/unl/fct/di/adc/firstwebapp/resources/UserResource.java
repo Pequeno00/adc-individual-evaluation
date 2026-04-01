@@ -30,6 +30,9 @@ public class UserResource {
     private static final String ERR_MSG_TOKEN_EXPIRED = "The operation is called with a token that is expired";
     private static final String ERR_CODE_UNAUTHORIZED = "9905";
     private static final String ERR_MSG_UNAUTHORIZED = "The operation is not allowed for the user role";
+    private static final String INVALID_INPUT = "The call is using input data not following the correct specification";
+    private static final String USER_NOT_FOUND = "The username referred in the operation doesn’t exist in registered accounts";
+    private static final String INVALID_CREDENTIALS = "The username-password pair is not valid";
     private static final String ROLE_ADMIN = "ADMIN";
     private static final String ROLE_BOFFICER = "BOFFICER";
     private static final String ROLE_USER = "USER";
@@ -103,7 +106,7 @@ public class UserResource {
 
         String targetUser = (String) request.input.get("username");
         if (targetUser == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         Transaction txn = datastore.newTransaction();
@@ -113,7 +116,7 @@ public class UserResource {
 
             if (user == null) {
                 txn.rollback();
-                return Response.ok(g.toJson(new ErrorResponse("9902", "USER_NOT_FOUND"))).build();
+                return Response.ok(g.toJson(new ErrorResponse("9902", USER_NOT_FOUND))).build();
             }
 
             txn.delete(userKey);
@@ -149,14 +152,14 @@ public class UserResource {
         Map<String, String> attributes = (Map<String, String>) request.input.get("attributes");
 
         if (targetUsername == null || attributes == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         Key targetUserKey = datastore.newKeyFactory().setKind("User").newKey(targetUsername);
         Entity targetUser = datastore.get(targetUserKey);
 
         if (targetUser == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9902", "USER_NOT_FOUND"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9902", USER_NOT_FOUND))).build();
         }
 
         String requesterRole = tokenDB.getString("role");
@@ -223,14 +226,14 @@ public class UserResource {
         String targetUsername = (String) request.input.get("username");
 
         if (targetUsername == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         Key targetUserKey = datastore.newKeyFactory().setKind("User").newKey(targetUsername);
         Entity targetUser = datastore.get(targetUserKey);
 
         if (targetUser == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9902", "USER_NOT_FOUND"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9902", USER_NOT_FOUND))).build();
         }
 
         if(tokenDB.getString("role").equals(ROLE_USER)) {
@@ -259,7 +262,7 @@ public class UserResource {
         String newRole = (String) request.input.get("newRole");
 
         if (targetUsername == null || newRole == null || !isValidRole(newRole)) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         if (!tokenDB.getString("role").equals(ROLE_ADMIN)) {
@@ -273,7 +276,7 @@ public class UserResource {
 
             if (targetUser == null) {
                 txn.rollback();
-                return Response.ok(g.toJson(new ErrorResponse("9902", "USER_NOT_FOUND"))).build();
+                return Response.ok(g.toJson(new ErrorResponse("9902", USER_NOT_FOUND))).build();
             }
 
             Entity updatedUser = Entity.newBuilder(targetUser)
@@ -311,7 +314,7 @@ public class UserResource {
         String newPassword = (String) request.input.get("newPassword");
 
         if (targetUsername == null || oldPassword == null || newPassword == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         String requesterUsername = tokenDB.getString("username");
@@ -328,13 +331,13 @@ public class UserResource {
 
             if (targetUser == null) {
                 txn.rollback();
-                return Response.ok(g.toJson(new ErrorResponse("9902", "USER_NOT_FOUND"))).build();
+                return Response.ok(g.toJson(new ErrorResponse("9902", USER_NOT_FOUND))).build();
             }
 
             String currentPasswordHash = targetUser.getString("user_pwd");
             if (!currentPasswordHash.equals(DigestUtils.sha512Hex(oldPassword))) {
                 txn.rollback();
-                return Response.ok(g.toJson(new ErrorResponse("9900", "INVALID_CREDENTIALS"))).build();
+                return Response.ok(g.toJson(new ErrorResponse("9900", INVALID_CREDENTIALS))).build();
             }
 
             // 5. Atualizar para a nova password (com hash)

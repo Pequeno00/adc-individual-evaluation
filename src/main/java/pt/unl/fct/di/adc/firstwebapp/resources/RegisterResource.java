@@ -29,6 +29,8 @@ public class RegisterResource {
 
 	private static final Logger LOG = Logger.getLogger(RegisterResource.class.getName());
 	private static final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
+    private static final String INVALID_INPUT = "The call is using input data not following the correct specification";
+    private static final String USER_ALREADY_EXISTS = "Error in creating an account because the username already exists";
 
 	private final Gson g = new Gson();
 
@@ -44,7 +46,7 @@ public class RegisterResource {
 
         // 1. Validar inputs básicos
         if(!data.validRegistration() || data.role == null) {
-            return Response.ok(g.toJson(new ErrorResponse("9906", "INVALID_INPUT"))).build();
+            return Response.ok(g.toJson(new ErrorResponse("9906", INVALID_INPUT))).build();
         }
 
         Transaction txn = datastore.newTransaction();
@@ -54,7 +56,7 @@ public class RegisterResource {
 
             if(user != null) {
                 txn.rollback();
-                return Response.ok(g.toJson(new ErrorResponse("9901", "USER_ALREADY_EXISTS"))).build();
+                return Response.ok(g.toJson(new ErrorResponse("9901", USER_ALREADY_EXISTS))).build();
             }
 
             user = Entity.newBuilder(userKey)
