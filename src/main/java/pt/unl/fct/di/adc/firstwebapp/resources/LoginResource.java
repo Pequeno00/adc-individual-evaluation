@@ -196,12 +196,10 @@ public class LoginResource {
         Key tokenKey = datastore.newKeyFactory().setKind("Token").newKey(tokenFromRequest.tokenId);
         Entity tokenEntity = datastore.get(tokenKey);
 
-        // Valida existência e se o username no JSON condiz com o dono do token na DB
         if (tokenEntity == null || !tokenEntity.getString("username").equals(tokenFromRequest.username)) {
             return null;
         }
 
-        // Valida expiração (usa "expiresAt" com e minúsculo para consistência) [cite: 85-88]
         long now = System.currentTimeMillis();
         if (now > tokenEntity.getLong("expiresAt")) {
             return null;

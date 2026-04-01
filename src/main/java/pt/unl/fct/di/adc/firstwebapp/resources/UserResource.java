@@ -46,43 +46,36 @@ public class UserResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response showUsers(AuthenticatedRequest request) {
-        // 1. Validar o Token usando a função auxiliar
         Entity tokenDB = getValidatedToken(request.token);
 
         if (tokenDB == null) {
-            // Se o token não existe ou está corrompido [cite: 104]
             return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_INVALID_TOKEN, ERR_MSG_INVALID_TOKEN))).build();
         }
 
-        // 2. Verificar se o token já expirou (usando a propriedade da DB) [cite: 104, 114]
         long now = System.currentTimeMillis();
         if (now > tokenDB.getLong("expiresAt")) {
             return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_TOKEN_EXPIRED, ERR_MSG_TOKEN_EXPIRED))).build();
         }
 
-        // 3. Verificação de Permissões (RBAC): Apenas ADMIN e BOFFICER
         String role = tokenDB.getString("role");
         if (!role.equals(ROLE_ADMIN) && !role.equals(ROLE_BOFFICER)) {
             LOG.warning("Acesso negado a showUsers para o utilizador: " + request.token.username);
             return Response.ok(g.toJson(new ErrorResponse(ERR_CODE_UNAUTHORIZED, ERR_MSG_UNAUTHORIZED))).build();
         }
 
-        // 4. Executar a Query para listar todos os utilizadores
         Query<Entity> query = Query.newEntityQueryBuilder()
                 .setKind("User")
                 .build();
         QueryResults<Entity> results = datastore.run(query);
 
-        // 5. Mapear para a lista simplificada (apenas username e role)
         List<UserShortData> userList = new ArrayList<>();
         results.forEachRemaining(userEntity -> {
             userList.add(new UserShortData(
-                    userEntity.getKey().getName(), // O username é a chave
+                    userEntity.getKey().getName(),
                     userEntity.getString("role")
             ));
         });
 
-        // 6. Enviar resposta no formato exigido: { "status": "success", "data": { "users": [...] } }
         Map<String, List<UserShortData>> dataMap = new HashMap<>();
         dataMap.put("users", userList);
 
@@ -367,12 +360,10 @@ public class UserResource {
         Key tokenKey = datastore.newKeyFactory().setKind("Token").newKey(tokenFromRequest.tokenId);
         Entity tokenEntity = datastore.get(tokenKey);
 
-        // Valida existência e se o username no JSON condiz com o dono do token na DB
         if (tokenEntity == null || !tokenEntity.getString("username").equals(tokenFromRequest.username)) {
             return null;
         }
 
-        // Valida expiração (usa "expiresAt" com e minúsculo para consistência) [cite: 85-88]
         long now = System.currentTimeMillis();
         if (now > tokenEntity.getLong("expiresAt")) {
             return null;
